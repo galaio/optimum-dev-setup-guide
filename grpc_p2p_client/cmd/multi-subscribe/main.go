@@ -126,6 +126,8 @@ func receiveMessages(ctx context.Context, ip string, writeData bool, dataCh chan
 			grpc.MaxCallRecvMsgSize(math.MaxInt),
 			grpc.MaxCallSendMsgSize(math.MaxInt),
 		),
+		grpc.WithInitialWindowSize(1<<30),
+		grpc.WithInitialConnWindowSize(1<<30),
 	)
 
 	fmt.Printf("IP -  %v\n", ip)

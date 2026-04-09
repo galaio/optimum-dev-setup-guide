@@ -111,13 +111,14 @@ func main() {
 }
 
 func sendMessages(ctx context.Context, ip string, datasize int, write bool, dataCh chan<- string) error {
-	// Create connection once and reuse for all messages
 	conn, err := grpc.NewClient(ip,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(math.MaxInt),
 			grpc.MaxCallSendMsgSize(math.MaxInt),
 		),
+		grpc.WithInitialWindowSize(1<<30),
+		grpc.WithInitialConnWindowSize(1<<30),
 	)
 	if err != nil {
 		return fmt.Errorf("[%s] failed to connect to node: %w", ip, err)
@@ -129,6 +130,15 @@ func sendMessages(ctx context.Context, ip string, datasize int, write bool, data
 	if err != nil {
 		return fmt.Errorf("[%s] ListenCommands failed: %w", ip, err)
 	}
+
+	// Drain server responses to prevent HTTP/2 flow-control backpressure.
+	go func() {
+		for {
+			if _, err := stream.Recv(); err != nil {
+				return
+			}
+		}
+	}()
 
 	println(fmt.Sprintf("Connected to node at: %s…", ip))
 
