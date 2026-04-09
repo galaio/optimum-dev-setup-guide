@@ -72,7 +72,8 @@ func main() {
 	}()
 
 	dataCh := make(chan string, 100)
-	randomByteLen := max(1, *dataSize/2)
+	// -datasize is the target total byte length of the published payload
+	// (prefix "ip-" plus hex-encoded random bytes). Shell passes benchmark MSG_SIZE.
 	var done chan bool
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(ips))
@@ -87,7 +88,7 @@ func main() {
 		wg.Add(1)
 		go func(ip string) {
 			defer wg.Done()
-			if err := sendMessages(ctx, ip, randomByteLen, *output != "", dataCh); err != nil {
+			if err := sendMessages(ctx, ip, *dataSize, *output != "", dataCh); err != nil {
 				errCh <- err
 				cancel()
 			}
@@ -110,7 +111,7 @@ func main() {
 	}
 }
 
-func sendMessages(ctx context.Context, ip string, datasize int, write bool, dataCh chan<- string) error {
+func sendMessages(ctx context.Context, ip string, targetPayloadBytes int, write bool, dataCh chan<- string) error {
 	conn, err := grpc.NewClient(ip,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(
@@ -149,8 +150,15 @@ func sendMessages(ctx context.Context, ip string, datasize int, write bool, data
 		default:
 		}
 
+		prefix := fmt.Sprintf("%s-", ip)
+		needHex := targetPayloadBytes - len(prefix)
+		if needHex < 2 {
+			needHex = 2
+		}
+		randomByteLen := max(1, (needHex+1)/2)
+
 		start := time.Now()
-		randomBytes := make([]byte, datasize)
+		randomBytes := make([]byte, randomByteLen)
 		if _, err := rand.Read(randomBytes); err != nil {
 			return fmt.Errorf("[%s] failed to generate random bytes: %w", ip, err)
 		}
